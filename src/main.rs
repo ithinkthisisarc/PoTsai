@@ -7,8 +7,9 @@ use hyper::{Client, Uri};
 use tokio_core::reactor::Core;
 use std::io;
 use std::io::Write;
-use std::thread;
 use std::env;
+use std::sync::{Arc, Barrier};
+use std::thread;
 
 fn read() -> String {
   let mut inp = String::new();
@@ -44,6 +45,7 @@ fn new_thread(url: String, t: i64) {
     let name = format!("child{}", t);
     println!("CREATING NEW THREAD ON {}", name);
     match thread::Builder::new().name(name.to_string()).spawn(move || {
+      loop {
         // Core is the Tokio event loop used for making a non-blocking request
         let mut core = Core::new().unwrap();
 
@@ -58,6 +60,7 @@ fn new_thread(url: String, t: i64) {
 
         // request is a Future, futures are lazy, so must explicitly run
         core.run(request).expect("\n\nSomething went wrong with `core.run`\n\n");
+      }
     }) {
       Ok(_) => println!("Thread {} exited successfully", name),
       Err(_) => println!("Thread {} died. Great.", name),
@@ -85,8 +88,36 @@ fn main() {
     }
   }
 
+  let mut handles = Vec::with_capacity(amnt as usize);
+  let barrier = Arc::new(Barrier::new(amnt as usize));
+
   for i in 0..amnt {
-      let new = uri.clone();
-      new_thread(new, i.into());
+    // let c = barrier.clone();
+    let a = uri.clone();
+    handles.push(thread::spawn(move|| {
+      loop {
+        // Core is the Tokio event loop used for making a non-blocking request
+        let mut core = Core::new().unwrap();
+
+        let client = Client::new(&core.handle());
+
+        let str_uri : Uri = a.parse().unwrap();
+
+        let request = client.get(str_uri)
+            .map(|res| {
+                assert_eq!(res.status(), hyper::Ok);
+            });
+
+        // request is a Future, futures are lazy, so must explicitly run
+        match core.run(request) {
+          Ok(_) => println!("Thread {} made a proper request", i),
+          Err(_) => println!("Thread {} died...", i),
+        }
+      }
+    }))
+  }
+  // Wait for other threads to finish.
+  for handle in handles {
+      handle.join().unwrap();
   }
 }
